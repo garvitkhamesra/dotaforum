@@ -1,34 +1,65 @@
-re('express');
-var path = require('path');
-var favicon = require('serve-favicon');
-var logger = require('morgan');
-var bodyParser = require('body-parser');
+var express = require('express')
+  , passport = require('passport')
+  , util = require('util')
+  , session = require('express-session')
+  , SteamStrategy = require('./lib/passport-steam/index.js').Strategy
+  , authRoutes = require('./routes/auth');
 
-//var book = require('./routes/book');
+passport.serializeUser(function(user, done) {
+  done(null, user);
+});
+
+passport.deserializeUser(function(obj, done) {
+  done(null, obj);
+});
+
+passport.use(new SteamStrategy({
+    returnURL: 'http://localhost:3000/auth/steam/return',
+    realm: 'http://localhost:3000/',
+    apiKey: 'A804E6079CC7E073B4554A5C60B5D00D'
+  },
+  function(identifier, profile, done) {
+    process.nextTick(function () {
+      profile.identifier = identifier;
+      return done(null, profile);
+    });
+  }
+));
+
 var app = express();
 
-app.use(logger('dev'));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({'extended':'false'}));
-app.use(express.static(path.join(__dirname, 'build')));
+app.set('views', __dirname + '/views');
+app.set('view engine', 'ejs');
 
-//app.use('/api/book', book);
+app.use(session({
+    secret: 'your secret',
+    name: 'name of session id',
+    resave: true,
+    saveUninitialized: true}));
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  var err = new Error('Not Found');
-  err.status = 404;
-  next(err);
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(express.static(__dirname + '/../../public'));
+
+app.get('/', function(req, res){
+  res.render('index', { user: req.user });
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+app.get('/account', ensureAuthenticated, function(req, res){
+  res.render('account', { user: req.user });
 });
-module.exports = app;
+
+app.get('/logout', function(req, res){
+  req.logout();
+  res.redirect('/');
+});
+
+app.use('/auth', authRoutes);
+
+app.listen(3000);
+
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) { return next(); }
+  res.redirect('/');
+}
+
